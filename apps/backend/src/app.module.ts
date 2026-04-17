@@ -1,10 +1,43 @@
 import { Module } from '@nestjs/common';
-import { AppController } from './app.controller';
-import { AppService } from './app.service';
+import { ConfigModule, ConfigService } from '@nestjs/config';
+import { DatabaseModule } from './database/database.module';
+import { AuthGuard, AuthModule } from '@thallesp/nestjs-better-auth';
+import { NodePgDatabase } from 'drizzle-orm/node-postgres';
+import { betterAuth } from 'better-auth';
+import { drizzleAdapter } from 'better-auth/adapters/drizzle';
+import { DATABASE_CONNECTION } from './database/database-connection';
+import { UsersModule } from './users/users.module';
+import { APP_GUARD } from '@nestjs/core';
 
 @Module({
-  imports: [],
-  controllers: [AppController],
-  providers: [AppService],
+  imports: [
+    ConfigModule.forRoot({
+      isGlobal: true,
+    }),
+    DatabaseModule,
+    UsersModule,
+    AuthModule.forRootAsync({
+      imports: [DatabaseModule],
+      useFactory: (database: NodePgDatabase, configService: ConfigService) => ({
+        auth: betterAuth({
+          database: drizzleAdapter(database, {
+            provider: 'pg',
+          }),
+          emailAndPassword: {
+            enabled: true,
+          },
+          trustedOrigins: [configService.getOrThrow('UI_URL')],
+        }),
+      }),
+      inject: [DATABASE_CONNECTION, ConfigService],
+    }),
+  ],
+  controllers: [],
+  providers: [
+    {
+      provide: APP_GUARD,
+      useClass: AuthGuard,
+    },
+  ],
 })
-export class AppModule {}
+export class AppModule { }
